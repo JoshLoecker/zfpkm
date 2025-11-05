@@ -1,0 +1,17 @@
+[environment]
+root = ["src"]
+python-version = "3.9"
+
+[rules]
+call-non-callable = "error"
+invalid-argument-type = "error"
+unresolved-reference = "error"
+unsupported-operator = "error"
+
+ambiguous-protocol-member = "warn"
+deprecated = "warn"
+division-by-zero = "warn"
+possibly-missing-attribute = "warn"
+possibly-unresolved-reference = "warn"
+unsupported-base = "warn"
+unused-ignore-comment = "warn"

@@ -1,0 +1,19 @@
+[project]
+name = "zfpkm"
+version = "0.1.0"
+description = "Find active genes in bulk RNA-seq data"
+requires-python = ">=3.9"
+dependencies = [
+    "loguru>=0.7.3",
+    "numpy>=1.25.0",
+    "pandas>=2.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pandas-stubs>=2.2.2.240807",
+    "pytest>=8.4.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
