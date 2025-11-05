@@ -11,10 +11,10 @@ from zfpkm.density import density
 from zfpkm.peak_finder import find_peaks
 from zfpkm.type import ApproxArgs, DensityArgs, DensityResult, FindPeaksArgs
 
-__all__ = ["density", "find_peaks", "zfpkm"]
+__all__ = ["density", "find_peaks", "zFPKM"]
 
 
-def zfpkm(
+def zFPKM(
     df: pd.DataFrame,
     density_args: DensityArgs | None = None,
     approx_args: ApproxArgs | None = None,
