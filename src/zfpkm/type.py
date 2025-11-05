@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict
+from dataclasses import dataclass as _dataclass
 from typing import Any, Callable, Literal, Protocol, TypeVar, Union, runtime_checkable
 
 import numpy as np
@@ -33,6 +35,12 @@ class _ToDict:
         for field in pop_fields:
             dict_.pop(field)
         return dict_
+
+
+def dataclass(*args, **kwargs):
+    if sys.version_info <= (3, 9):
+        kwargs.pop("slots")
+    return _dataclass(*args, **kwargs)
 
 
 @dataclass(slots=True)
