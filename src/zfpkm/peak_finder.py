@@ -1,17 +1,14 @@
-from __future__ import annotations
-
 import re
+from collections.abc import Sequence
 from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-__all__ = ["find_peaks"]
-
 
 def _validate_args(
-    x: npt.NDArray[np.float64],
+    x: npt.NDArray[np.number],
     nups: int,
     ndowns: int,
     zero: Literal["0", "+", "-"],
@@ -41,7 +38,7 @@ def _validate_args(
         raise ValueError("Argument 'threshold' must be non-negative")
 
 
-def _encode_signs(x: npt.NDArray[np.float64], zero: str) -> str:
+def _encode_signs(x: npt.NDArray[np.number], zero: str) -> str:
     """Encode the signs of the differences in `x` into a string.
 
     Function created to reduce the complexity of `find_peaks` (ruff linting rule C901)
@@ -69,9 +66,8 @@ def _enforce_minimum_peak_distance(df: pd.DataFrame, min_peak_distance: int, inp
 
     Modifies `df` inplace
     """
-    num_rows = df.shape[0]
-    good_peaks = np.ones(num_rows, dtype=bool)
-    for i in range(num_rows):
+    good_peaks = np.ones(df.shape[0], dtype=bool)
+    for i in range(df.shape[0]):
         if not good_peaks[i]:
             continue
         dpos = np.abs(df.at[i, "peak_idx"] - df["peak_idx"].values)
@@ -86,7 +82,7 @@ def _enforce_minimum_peak_distance(df: pd.DataFrame, min_peak_distance: int, inp
 
 
 def find_peaks(
-    y: npt.ArrayLike,
+    x: Sequence[float] | Sequence[int] | npt.NDArray[np.number],
     nups: int = 1,
     ndowns: int | None = None,
     zero: Literal["0", "+", "-"] = "0",
@@ -106,13 +102,11 @@ def find_peaks(
     References:
         1) pracma::findpeaks: https://rdrr.io/cran/pracma/man/findpeaks.html
 
-
-    :param y: the stand-alone y-values as a numerical vector taken as a time series (no NA values allowed)
-        Linear, arbitrary values will be placed from 0 to `len(y)` to serve as x-values
+    :param x: numerical vector taken as a time series (no NA values allowed)
     :param nups: minimum number of increasing steps before a peak is reached
     :param ndowns: minimum number of decreasing steps after the peak (defaults to the same value as `nups`)
     :param zero: can be '+', '-', or '0'; how to interprete succeeding steps of the same value: increasing, decreasing, or special
-    :param peak_pattern: define a peak as a regular pattern, such as the default pattern `[+]{1,}[-]{1,}`
+    :param peak_pattern: define a peak as a regular pattern, such as the default pattern `[+]{1,}[-]{1,}`.
         If a pattern is provided, parameters `nups` and `ndowns` are not taken into account
     :param min_peak_height: the minimum (absolute) height a peak has to have before being recognized
     :param min_peak_distance: the minimum distance (in indices) between peaks before they are counted
@@ -127,12 +121,12 @@ def find_peaks(
         end_idx: the ending index (from `x`) of the identified peak
         If the dataframe is empty, no peaks could be identified
     """
-    y: npt.NDArray[np.float64] = np.asarray(y, dtype=np.float64) if not isinstance(y, np.ndarray) else y
+    x = np.asarray(x, dtype=float) if not isinstance(x, np.ndarray) else x
     npeaks: int = max(npeaks, 0)
     ndowns: int = ndowns or nups
     peak_pattern: str = peak_pattern or rf"[+]{{{nups},}}[-]{{{ndowns},}}"
     _validate_args(
-        x=y,
+        x=x,
         nups=nups,
         ndowns=ndowns,
         zero=zero,
@@ -142,7 +136,7 @@ def find_peaks(
     )
 
     # find peaks by regex matching the sign pattern
-    derivative_chars = _encode_signs(x=y, zero=zero)
+    derivative_chars = _encode_signs(x=x, zero=zero)
     matches: list[re.Match[str]] = list(re.finditer(peak_pattern, derivative_chars))
     if not matches:
         return pd.DataFrame(columns=["height", "peak_idx", "start_idx", "end_idx"])
@@ -152,18 +146,18 @@ def find_peaks(
 
     num_matches: int = len(pattern_start_index)
     peak_index: npt.NDArray[int] = np.zeros(num_matches, dtype=int)
-    peak_height: npt.NDArray[np.float64] = np.zeros(num_matches, dtype=np.float64)
+    peak_height: npt.NDArray[float] = np.zeros(num_matches, dtype=float)
 
     # for each match region, find the local max
     for i in range(num_matches):
-        segment: npt.NDArray[np.float64] = y[pattern_start_index[i] : pattern_end_index[i] + 1]
+        segment: npt.NDArray[int] = x[pattern_start_index[i] : pattern_end_index[i] + 1]
         segment_max_idx: int = np.argmax(segment).astype(int)
         peak_index[i] = pattern_start_index[i] + segment_max_idx
         peak_height[i] = segment[segment_max_idx]
 
     # filter for values that are too low or below the threshold difference
-    x_left: float = y[pattern_start_index]
-    x_right: float = y[np.minimum(pattern_end_index, y.size - 1)]
+    x_left: float = x[pattern_start_index]
+    x_right: float = x[np.minimum(pattern_end_index, x.size - 1)]
     valid_peaks: list[int] = list(np.where((peak_height >= min_peak_height) & ((peak_height - np.maximum(x_left, x_right)) >= threshold))[0].astype(int))  # noqa: E501  # fmt: skip
 
     if len(valid_peaks) == 0:
@@ -171,10 +165,10 @@ def find_peaks(
 
     out_df: pd.DataFrame = pd.DataFrame(
         data={
-            "height": peak_height[valid_peaks].astype(np.float64),
-            "peak_idx": peak_index[valid_peaks].astype(np.uint64),
-            "start_idx": pattern_start_index[valid_peaks].astype(np.uint64),
-            "end_idx": pattern_end_index[valid_peaks].astype(np.uint64),
+            "height": peak_height[valid_peaks],
+            "peak_idx": peak_index[valid_peaks],
+            "start_idx": pattern_start_index[valid_peaks],
+            "end_idx": pattern_end_index[valid_peaks],
         }
     )
 

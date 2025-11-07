@@ -1,53 +1,54 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Literal, cast
+from typing import Literal, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
 
-from zfpkm.type import ApproxResult, RegularizedArray
+from zfpkm.types import ApproxResult
 
-__all__ = ["approx"]
+T_TIES = Callable[[npt.NDArray[float]], float] | Literal["mean", "avg", "average", "first", "left", "last", "right", "min", "max", "median", "sum"]
 
 
-def _coerce_to_float_array(a: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Coerce input to a 1D float array.
+class _RegularizeValues(NamedTuple):
+    x: npt.NDArray[float]
+    y: npt.NDArray[float]
+    not_na: npt.NDArray[bool]
+    kept_na: bool
 
-    :param a: the array to coerce
 
-    :returns: A floating point 1D array.
-    """
-    arr: npt.NDArray[np.float64] = np.asarray(a, dtype=np.float64)
-    return arr if arr.ndim == 1 else arr.ravel()
+def _coerce_to_float_array(a) -> npt.NDArray[float]:
+    """Convert input to 1D float array."""
+    arr = np.asarray(a, dtype=float)
+    if arr.ndim != 1:
+        arr = arr.ravel()
+    return arr
 
 
 def _regularize_values(
-    x: npt.ArrayLike,
-    y: npt.ArrayLike,
-    *,
+    x: npt.NDArray[float],
+    y: npt.NDArray[float],
+    ties: T_TIES,
     na_rm: bool,
-    ties: Callable[[npt.ArrayLike], np.float64] | Literal["mean", "first", "last", "min", "max", "median", "sum"] = "mean",
-) -> RegularizedArray:
-    """Reimplementation of R's regularize.values() used by approx().
+) -> _RegularizeValues:
+    """Minimal reimplementation of R's regularize.values() used by approx().
 
       - Removes NA pairs if na_rm is True (else requires x to have no NA).
       - Sorts by x (stable).
       - Collapses duplicate x via `ties` aggregator.
 
-    :param x: the x values to regularize
-    :param y: ties: the corresponding y values
-    :param na_rm: should NA values be removed?
-    :param ties: how to handle duplicate x values; can be a string or a callable
+    :param x: Input x values
+    :param y: Input y values
+    :param ties: Aggregation method for tied x values
+    :param na_rm: Whether to remove NA pairs
 
-    :returns: A NamedTuple with:
+    :returns: dictionary with
         - x: sorted unique x
         - y: aggregated y aligned with x
         - not_na: boolean mask of y that are not NaN
         - kept_na: True iff any NaN remained in y after regularization
     """
-    x: npt.NDArray[np.float64] = np.asarray(x, dtype=np.float64)
-    y: npt.NDArray[np.float64] = np.asarray(y, dtype=np.float64)
     if na_rm:
         # Remove pairs where x or y is NA
         keep = ~np.isnan(x) & ~np.isnan(y)
@@ -61,70 +62,67 @@ def _regularize_values(
         kept_na = np.isnan(y).any()
 
     if x.size == 0:
-        return RegularizedArray(
-            x=np.asarray(x, dtype=np.float64),
-            y=np.asarray(y, dtype=np.float64),
-            not_na=np.array([], dtype=bool),
-            kept_na=kept_na,
-        )
+        return _RegularizeValues(x=x, y=y, not_na=np.asarray([], dtype=bool), kept_na=kept_na)
 
     # Use a stable sort (mergesort) to match R's order()
-    order: npt.NDArray[np.int64] = np.argsort(x, kind="stable")
-    x_sorted: npt.NDArray[np.float64] = x[order]
-    y_sorted: npt.NDArray[np.float64] = y[order]
-
-    change = np.empty(x_sorted.shape, dtype=bool)
-    change[0] = True
-    change[1:] = x_sorted[1:] != x_sorted[:-1]
-    start_idx = np.flatnonzero(change)
-    counts = np.diff(np.append(start_idx, x_sorted.size))
-    unique_x = x_sorted[start_idx]
+    order = np.argsort(x, kind="mergesort")
+    x_sorted = x[order]
+    y_sorted = y[order]
 
     # Handle the 'ties' argument
     if callable(ties):
-        y_agg = np.empty_like(unique_x)
-        for k, (start, count) in enumerate(zip(start_idx, counts)):
-            y_agg[k] = ties(y_sorted[start : start + count])
+        agg_fn = ties
     else:
-        if ties in ("mean", "avg", "average"):
-            sum_y = np.add.reduceat(y_sorted, start_idx)
-            y_agg = sum_y / counts
-        elif ties in ("first", "left"):
-            y_agg = y_sorted[start_idx]
-        elif ties in ("last", "right"):
-            y_agg = y_sorted[start_idx + counts - 1]
-        elif ties == "min":
-            y_agg = np.minimum.reduceat(y_sorted, start_idx)
-        elif ties == "max":
-            y_agg = np.maximum.reduceat(y_sorted, start_idx)
-        elif ties == "median":
-            y_agg = np.array([np.median(y_sorted[start : start + count]) for start, count in zip(start_idx, counts)], dtype=np.float64)
-        elif ties == "sum":
-            y_agg = np.add.reduceat(y_sorted, start_idx)
+        ties_str = "mean" if ties is None else str(ties).lower()
+        if ties_str in ("mean", "avg", "average"):
+            agg_fn = np.mean
+        elif ties_str in ("first", "left"):
+
+            def agg_fn(a):
+                return a[0]
+        elif ties_str in ("last", "right"):
+
+            def agg_fn(a):
+                return a[-1]
+        elif ties_str == "min":
+            agg_fn = np.min
+        elif ties_str == "max":
+            agg_fn = np.max
+        elif ties_str == "median":
+            agg_fn = np.median
+        elif ties_str == "sum":
+            agg_fn = np.sum
         else:
             raise ValueError("Unsupported `ties`; use a callable or one of 'mean', 'first', 'last', 'min', 'max', 'median', 'sum'.")
 
+    # Find unique x values and their indices/counts
+    unique_x, start_idx, counts = np.unique(x_sorted, return_index=True, return_counts=True)
+
+    # Aggregate y values for tied x values
+    y_agg = np.empty(unique_x.shape, dtype=float)
+    for k, (start, count) in enumerate(zip(start_idx, counts, strict=True)):
+        seg = y_sorted[start : start + count]
+        # Note: aggregators like np.mean will return NaN if `seg` contains NaN,
+        # matching R's default (mean(..., na.rm = FALSE)).
+        y_agg[k] = agg_fn(seg)
+
     not_na = ~np.isnan(y_agg)
-    kept_na_final = bool(np.isnan(y_agg).any())
-    return RegularizedArray(
-        x=unique_x.astype(np.float64, copy=False),
-        y=y_agg.astype(np.float64, copy=False),
-        not_na=not_na.astype(bool, copy=False),
-        kept_na=kept_na_final,
-    )
+    # Check if any NaNs remain in the *aggregated* y values
+    kept_na_final = bool(np.any(~not_na) if np.any(np.isnan(y_agg)) else False)
+    return _RegularizeValues(x=unique_x, y=y_agg, not_na=not_na, kept_na=kept_na_final)
 
 
 def approx(
-    x: npt.ArrayLike,
-    y: npt.ArrayLike | None = None,
-    xout: npt.ArrayLike | None = None,
+    x: Sequence[float],
+    y: Sequence[float] | None = None,
+    xout: Sequence[float] | None = None,
     method: str | int = "linear",
     n: int = 50,
     yleft: float | None = None,
     yright: float | None = None,
-    rule: int | tuple[int, int] = 1,
+    rule: int | Sequence[int] = 1,
     f: float = 0.0,
-    ties: Callable[[npt.ArrayLike], np.float64] | Literal["mean", "first", "last", "min", "max", "median", "sum"] = "mean",
+    ties: T_TIES = "mean",
     na_rm: bool = True,
 ) -> ApproxResult:
     """Faithful Python port of R's `approx` function.
@@ -147,13 +145,12 @@ def approx(
     :param ties: How to handle duplicate `x` values. Can be 'mean', 'first', 'last', 'min', 'max', 'median', 'sum', or a callable function.
     :param na_rm: If True, `NA` pairs are removed before interpolation. If False, `NA`s in `x` cause an error, `NA`s in `y` are propagated.
 
-    :returns: `Approx` NamedTuple with:
-        - 'x': numpy array of xout used
-        - 'y': numpy array of interpolated values
+    :returns: `ApproxResult` data type
     """
+    # One-argument form: approx(y) -> x := 1..n, y := y
     if y is None:
         y_arr = _coerce_to_float_array(x)
-        x_arr = np.arange(1.0, y_arr.size + 1.0, dtype=np.float64)
+        x_arr = np.arange(1.0, y_arr.size + 1.0, dtype=float)
     else:
         x_arr = _coerce_to_float_array(x)
         y_arr = _coerce_to_float_array(y)
@@ -177,24 +174,25 @@ def approx(
             raise ValueError("invalid interpolation method")
 
     # --- Rule normalization ---
-    if isinstance(rule, (Sequence, np.ndarray)):
-        rule_list: list[int] = list(rule)
-        if not (1 <= len(rule_list) <= 2):
+    if isinstance(rule, list | tuple | np.ndarray):
+        rlist = list(rule)
+        if not (1 <= len(rlist) <= 2):
             raise ValueError("`rule` must have length 1 or 2")
-        if len(rule_list) == 1:
-            rule_list = [rule_list[0], rule_list[0]]
+        if len(rlist) == 1:
+            rlist = [rlist[0], rlist[0]]
     else:
-        rule_list = [rule, rule]
+        rlist = [rule, rule]
 
+    # --- Regularize values ---
     # Sort by x, collapse ties, and handle NAs like R's regularize.values()
-    r: RegularizedArray = _regularize_values(x_arr, y_arr, na_rm=na_rm, ties=ties)
-    x_reg: npt.NDArray[np.float64] = r.x
-    y_reg: npt.NDArray[np.float64] = r.y
-    not_na_mask: npt.NDArray[bool] = r.not_na
+    r = _regularize_values(x_arr, y_arr, ties, na_rm)
+    x_reg = r.x
+    y_reg = r.y
+    not_na_mask = r.not_na
     # no_na is True if we don't have to worry about NAs in y_reg
-    no_na: bool = na_rm or (not r.kept_na)
+    no_na = na_rm or (not r.kept_na)
     # nx is the number of *valid* (non-NA) points for interpolation
-    nx: int = x_reg.size if no_na else int(np.count_nonzero(not_na_mask))
+    nx = x_reg.size if no_na else int(np.count_nonzero(not_na_mask))
 
     if np.isnan(nx):
         raise ValueError("invalid length(x)")
@@ -206,79 +204,79 @@ def approx(
         if nx == 0:
             raise ValueError("zero non-NA points")
 
-    # set extrapolation values (yleft/yright)
+    # --- Set extrapolation values (yleft/yright) ---
     # This logic matches R's C code (R_approxtest)
     if no_na:
-        y_first: float = y_reg[0]
-        y_last: float = y_reg[-1]
+        y_first = y_reg[0]
+        y_last = y_reg[-1]
     else:
         # Find first and last non-NA y values
-        y_valid: npt.NDArray[np.float64] = y_reg[not_na_mask]
-        y_first: float = y_valid[0]
-        y_last: float = y_valid[-1]
+        y_valid = y_reg[not_na_mask]
+        y_first = y_valid[0]
+        y_last = y_valid[-1]
 
-    yleft_val: float = (np.nan if int(rule_list[0]) == 1 else y_first) if yleft is None else float(yleft)
-    yright_val: float = (np.nan if int(rule_list[1]) == 1 else y_last) if yright is None else float(yright)
+    yleft_val = (np.nan if int(rlist[0]) == 1 else y_first) if yleft is None else float(yleft)
+    yright_val = (np.nan if int(rlist[1]) == 1 else y_last) if yright is None else float(yright)
 
-    # fabricate xout if it is missing
+    # --- Fabricate xout if missing ---
     if xout is None:
         if n <= 0:
             raise ValueError("'approx' requires n >= 1")
         if no_na:
-            x_first: np.float64 = x_reg[0]
-            x_last: np.float64 = x_reg[nx - 1]
+            x_first = x_reg[0]
+            x_last = x_reg[nx - 1]
         else:
-            x_valid: npt.NDArray[np.float64] = x_reg[not_na_mask]
-            x_first: np.float64 = x_valid[0]
-            x_last: np.float64 = x_valid[-1]
-        xout_arr: npt.NDArray[np.float64] = np.linspace(x_first, x_last, num=int(n), dtype=np.float64)
+            x_valid = x_reg[not_na_mask]
+            x_first = x_valid[0]
+            x_last = x_valid[-1]
+        xout_arr = np.linspace(x_first, x_last, num=int(n), dtype=float)
     else:
-        xout_arr: npt.NDArray[np.float64] = _coerce_to_float_array(xout)
+        xout_arr = _coerce_to_float_array(xout)
 
-    # replicate R's C_ApproxTest checks
+    # --- C_ApproxTest checks ---
     if method_code == 2 and (not np.isfinite(f) or f < 0.0 or f > 1.0):
-        raise ValueError("approx(): invalid f value; with `method=2`, `f` must be in the range [0,1] (inclusive) or NA")
+        raise ValueError("approx(): invalid f value")
     if not no_na:
         # R re-filters x and y here if NAs remained
-        x_reg: npt.NDArray[np.float64] = x_reg[not_na_mask]
-        y_reg: npt.NDArray[np.float64] = y_reg[not_na_mask]
+        x_reg = x_reg[not_na_mask]
+        y_reg = y_reg[not_na_mask]
 
-    # perform interpolation
-    # this section is a vectorized form of the logic from R's approx1 and R_approxfun
-    yout: npt.NDArray[np.float64] = np.empty_like(xout_arr, dtype=np.float64)
-    mask_nan_xout: npt.NDArray[bool] = np.isnan(xout_arr)
+    # --- Interpolation ---
+    # This section vectorized the logic from R's approx1 and R_approxfun
+    yout = np.empty_like(xout_arr, dtype=float)
+    mask_nan_xout = np.isnan(xout_arr)
     yout[mask_nan_xout] = np.nan
-    mask_valid: npt.NDArray[bool] = ~mask_nan_xout
+    mask_valid = ~mask_nan_xout
 
     if x_reg.size == 0:
         # No valid points to interpolate against
         yout[mask_valid] = np.nan
         return ApproxResult(x=xout_arr, y=yout)
 
-    xv: npt.NDArray[np.float64] = xout_arr[mask_valid]
-    left_mask: npt.NDArray[bool] = xv < x_reg[0]
-    right_mask: npt.NDArray[bool] = xv > x_reg[-1]
-    mid_mask: npt.NDArray[bool] = ~(left_mask | right_mask)
+    xv = xout_arr[mask_valid]
+    left_mask = xv < x_reg[0]
+    right_mask = xv > x_reg[-1]
+    mid_mask = ~(left_mask | right_mask)
 
-    res: npt.NDArray[np.float64] = np.empty_like(xv, dtype=np.float64)
+    res = np.empty_like(xv)
     res[left_mask] = yleft_val
     res[right_mask] = yright_val
 
     if np.any(mid_mask):
-        xm: npt.NDArray[np.float64] = xv[mid_mask]
+        xm = xv[mid_mask]
 
         # Find indices
         # j_right[k] = index of first x_reg > xm[k]
-        j_right: npt.NDArray[np.int64] = cast(npt.NDArray[np.int64], np.searchsorted(x_reg, xm, side="right"))
+        j_right = np.searchsorted(x_reg, xm, side="right")
         # j_left[k] = index of first x_reg >= xm[k]
-        j_left: npt.NDArray[np.int64] = cast(npt.NDArray[np.int64], np.searchsorted(x_reg, xm, side="left"))
+        j_left = np.searchsorted(x_reg, xm, side="left")
 
         # Points that exactly match an x_reg value
-        eq_mask: npt.NDArray[bool] = np.asarray(j_left != j_right, dtype=bool)
+        eq_mask = j_left != j_right
         # Points that fall between x_reg values
-        in_interval_mask: npt.NDArray[bool] = ~eq_mask
+        in_interval_mask = ~eq_mask
 
-        res_mid: npt.NDArray[np.float64] = np.empty_like(xm, dtype=np.float64)
+        res_mid = np.empty_like(xm)
 
         if np.any(eq_mask):
             # For exact matches, use the corresponding y_reg value
@@ -287,17 +285,17 @@ def approx(
 
         if np.any(in_interval_mask):
             # R's C code sets i = j-1, where j is the 'right' index
-            j: npt.NDArray[np.int64] = j_right[in_interval_mask]
-            i: npt.NDArray[np.int64] = j - 1
+            j = j_right[in_interval_mask]
+            i = j - 1
 
             # Get the surrounding x and y values
-            xi: npt.NDArray[np.float64] = x_reg[i]
-            xj: npt.NDArray[np.float64] = x_reg[j]
-            yi: npt.NDArray[np.float64] = y_reg[i]
-            yj: npt.NDArray[np.float64] = y_reg[j]
+            xi = x_reg[i]
+            xj = x_reg[j]
+            yi = y_reg[i]
+            yj = y_reg[j]
 
             if method_code == 1:  # linear
-                t: npt.NDArray[np.float64] = (xm[in_interval_mask] - xi) / (xj - xi)
+                t = (xm[in_interval_mask] - xi) / (xj - xi)
                 res_mid[in_interval_mask] = yi + (yj - yi) * t
             else:  # constant
                 # This matches R_approxfun's constant logic
@@ -306,10 +304,10 @@ def approx(
                 elif f == 1.0:
                     res_mid[in_interval_mask] = yj
                 else:
-                    # computes R's (1-f)*yi + f*yj
-                    f1: np.float64 = np.float64(1.0 - f)
-                    f2: np.float64 = np.float64(f)
-                    part: npt.NDArray[np.float64] = np.zeros_like(yi, dtype=np.float64)
+                    # R computes (1-f)*yi + f*yj, but carefully
+                    f1 = 1.0 - f
+                    f2 = f
+                    part = np.zeros_like(yi)
                     if f1 != 0.0:
                         part += yi * f1
                     if f2 != 0.0:

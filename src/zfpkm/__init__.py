@@ -1,89 +1,66 @@
-from __future__ import annotations
-
-from collections.abc import Sequence
-from typing import Any
-
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from zfpkm.density import density
+from zfpkm.approx import approx
+from zfpkm.density import bin_distribution, density, dnorm, nrd0
 from zfpkm.peak_finder import find_peaks
-from zfpkm.type import ApproxArgs, DensityArgs, DensityResult, FindPeaksArgs
+from zfpkm.plot import zfpkm_plot
+from zfpkm.types import ApproxResult, DensityResult, ZFPKMResult
 
-__all__ = ["density", "find_peaks", "zFPKM"]
+__all__ = [
+    "ApproxResult",
+    "DensityResult",
+    "ZFPKMResult",
+    "approx",
+    "bin_distribution",
+    "density",
+    "dnorm",
+    "find_peaks",
+    "nrd0",
+    "zFPKM",
+    "zfpkm_plot",
+]
 
 
-def zFPKM(
-    df: pd.DataFrame,
-    density_args: DensityArgs | None = None,
-    approx_args: ApproxArgs | None = None,
-    find_peaks_args: FindPeaksArgs | None = None,
-) -> pd.DataFrame:
-    """ZFPKM Transformations.
+def zFPKM(fpkm: pd.DataFrame) -> tuple[pd.DataFrame, list[ZFPKMResult]]:  # noqa: N802
+    """Calculate zFPKM from raw FPKM values.
 
-    References:
-        1) zFPKM implementation in R: https://github.com/ronammar/zFPKM
-        2) zFPKM publication: https://doi.org/10.1186/1471-2164-14-778
+    This function will perform a zFPKM calculation, following Hart et al's (2013) paper and the zFPKM implementation at: `https://github.com/ronammar/zFPKM`
 
-    :param df: The raw FPKM values to perform zFPKM on.
-    :param density_args: The default arguments provided to the density calculaton
-    :param approx_args: The default arguments provided to the approx calculation
-    :param find_peaks_args: The default arguments provided to the find_peaks calculation
-    :returns: A dataframe containing the zFPKM values
+    The input dataframe should have:
+        - Row names as genomic identifier (Entrez Gene ID, Ensembl Gene ID, Gene Symbol, etc.)
+        - Column names as sample identifiers
+
+    :param fpkm: raw FPKM values.
+
+    :returns: a tuple of:
+        1) The zFPKM calculation, where the index and columns are in the same order as the input dataframe
+        2) A list of associated metadata, the same length as the number of input columns, containing:
+            - Density calculations
+            - Mean (peak) Gaussian distribution value
+            - Standard deviation of the Gaussian distribution
+            - The FPKM value at the Gaussian mean (peak)
     """
-    density_args = density_args or DensityArgs()
-    approx_args = approx_args or ApproxArgs()
-    find_peaks_args = find_peaks_args or FindPeaksArgs()
+    with np.errstate(divide="ignore"):
+        log2_vals: npt.NDArray[float] = np.log2(fpkm.values).astype(float)
 
-    if isinstance(find_peaks_args.min_peak_height, Sequence) and len(find_peaks_args.min_peak_height) != df.shape[1]:
-        raise ValueError(
-            f"If providing a sequence for `min_peak_height`, its length must match the number of columns in `df`. "
-            f"Input dataframe has {df.shape[1]} columns, but `min_peak_height` only has {len(find_peaks_args.min_peak_height)} values."
-        )
-    if isinstance(find_peaks_args.min_peak_distance, Sequence) and len(find_peaks_args.min_peak_distance) != df.shape[1]:
-        raise ValueError(
-            f"If providing a sequence for `min_peak_distance`, its length must match the number of columns in `df`. "
-            f"Input dataframe has {df.shape[1]} columns, but `min_peak_distance` only has {len(find_peaks_args.min_peak_distance)} values."
-        )
-    peak_heights: list[float] = (
-        list(find_peaks_args.min_peak_height)
-        if isinstance(find_peaks_args.min_peak_height, Sequence)
-        else [find_peaks_args.min_peak_height] * df.shape[1]
-    )
-    peak_distances: list[int] = (
-        list(find_peaks_args.min_peak_distance)
-        if isinstance(find_peaks_args.min_peak_distance, Sequence)
-        else [find_peaks_args.min_peak_distance] * df.shape[1]
-    )
+    zfpkm_df: pd.DataFrame = pd.DataFrame(data=0.0, index=fpkm.index, columns=fpkm.columns)
+    zfpkm_results: list[ZFPKMResult] = []
+    for i, col in enumerate(fpkm.columns):
+        log2_values: npt.NDArray[float] = log2_vals[:, i]
+        d = density(log2_values)
+        peaks: pd.DataFrame = find_peaks(d.y)
+        peak_positions = d.x[peaks["peak_idx"]]
 
-    row_names: list[Any] = df.index.tolist()
-    col_names: list[Any] = df.columns.tolist()
-    fpkm: npt.NDArray[np.float64] = df.values.astype(np.float64)
-
-    # Ignore np.log2(0) errors; we know this will happen, and are removing non-finite values in the density calculation
-    # This is required in order to match R's zFPKM calculations, as R's `density` function removes NA values.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log2fpkm: npt.NDArray[np.float64] = np.log2(fpkm, dtype=np.float64)
-
-    fpkm_vals_at_mu: npt.NDArray[np.float64] = np.zeros(log2fpkm.shape[1], dtype=np.float64)
-    results: npt.NDArray[np.float64] = np.empty_like(df, dtype=np.float64)
-
-    for col_idx in range(log2fpkm.shape[1]):
-        log2_col = log2fpkm[:, col_idx]
-        d = density(log2_col, approx_args=approx_args, **density_args.to_dict())
-        peaks = find_peaks(d.y, min_peak_height=peak_heights[col_idx], min_peak_distance=peak_distances[col_idx], **find_peaks_args.to_dict())
-        peak_positions: npt.NDArray[np.float64] = d.x_grid[peaks["peak_idx"]]
-
-        sd = np.float64(1.0)
-        mu = np.float64(0.0)
-        fpkm_at_mu = np.float64(0.0)
+        sd = 1.0
+        mu = 0.0
+        fpkm_at_mu = 0.0
         if peak_positions.size > 0:
-            mu = np.float64(peak_positions.max())
-            u = np.float64(log2fpkm[log2fpkm > mu].mean())
-            fpkm_at_mu = np.float64(d.y_grid[peaks.loc[np.argmax(peak_positions), "peak_idx"]])
-            sd = np.float64((u - mu) * np.sqrt(np.pi / 2))
-        results[:, col_idx] = (log2_col - mu) / sd
-        fpkm_vals_at_mu[col_idx] = fpkm_at_mu
-
-    return pd.DataFrame(results, index=row_names, columns=col_names)
+            mu = float(peak_positions.max())
+            u = float(log2_values[log2_values > mu].mean())
+            fpkm_at_mu = float(d.y[int(peaks.loc[np.argmax(peak_positions).astype(int), "peak_idx"])])
+            sd = float((u - mu) * np.sqrt(np.pi / 2))
+        zfpkm_df[col] = np.asarray((log2_values - mu) / sd, dtype=float)
+        zfpkm_results.append(ZFPKMResult(name=col, density=d, mu=mu, sd=sd, fpkm_at_mu=fpkm_at_mu))
+    return zfpkm_df, zfpkm_results

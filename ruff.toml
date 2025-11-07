@@ -1,6 +1,6 @@
 line-length = 150
 extend-include = ["docs/**/*.py", "tests/**/*.py", "**/*.ipynb"]
-target-version  = "py39"
+target-version = "py310"
 
 [format]
 quote-style = "double"
@@ -12,10 +12,10 @@ docstring-code-line-length = 30
 unfixable = [
     "F401", # warn about, but do not remove, unused imports
 ]
- fixable = [
-     "RUF022",  # allow sorting `__all__`
-     "UP035",  # imports from non-deprecated modules (i.e., collections.abc.Sequence instead of typing.Sequence)
- ]
+fixable = [
+    "RUF022", # allow sorting `__all__`
+    "UP035", # imports from non-deprecated modules (i.e., collections.abc.Sequence instead of typing.Sequence)
+]
 
 
 select = [
@@ -40,7 +40,8 @@ select = [
     "SIM", # check for code that can be simplified; https://pypi.org/project/flake8_simplify/
     "T20", # do not use prints in production; https://pypi.org/project/flake8-print/
     "TRY", # prevent Exception handling anti-patterns; https://pypi.org/project/tryceratops/
-    "UP"        # upgrade syntax for newer versions; https://pypi.org/project/pyupgrade
+    "UP", # upgrade syntax for newer versions; https://pypi.org/project/pyupgrade
+    "W"  # pycodestyle warnings; https://docs.astral.sh/ruff/rules/#warning-w
 ]
 ignore = [
     "D100", # allow undocumented public module definitions
@@ -48,6 +49,7 @@ ignore = [
     "D104", # allow undocumented public package
     "D203", # do not require one blank line before class docstring
     "D213", # first docstring line should be on the second line
+    "D413", # ignore missing blank line after last section
     "TRY003", # allow exception messages outside the `Exception` class
 ]
 
