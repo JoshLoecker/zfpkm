@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "loguru>=0.7.3",
+    "matplotlib>=3.10.7",
     "numpy>=1.20.3", # 1.20.3 required for pandas>=2.0.0
     "pandas>=2.0.0",
 ]
@@ -41,3 +42,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.uv.build-backend]
+wheel-exclude = ["tests/**", "figures/**"]
+source-exclude = ["tests/**", "figures/**"]
