@@ -95,7 +95,7 @@ def find_peaks(
 ) -> pd.DataFrame:
     """Identify peaks in a given time series.
 
-    This function is modelled after R's `pracma::findpeaks` function.
+    This function is modeled after R's `pracma::findpeaks` function.
     SciPy's `scipy.signal.find_peaks` provides different results than `pracma::findpeaks`,
         resulting in the requirement for this translation.
 
@@ -121,6 +121,9 @@ def find_peaks(
         end_idx: the ending index (from `x`) of the identified peak
         If the dataframe is empty, no peaks could be identified
     """
+    if ndowns is None:
+        ndowns = nups
+
     _x: npt.NDArray[np.float64] = np.asarray(x, dtype=np.float64)
     npeaks: int = max(npeaks, 0)
     _ndowns: int = ndowns or nups
