@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Literal, cast
+from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -154,6 +154,40 @@ def nrd0(x: npt.NDArray[np.floating]) -> float:
     return float(0.9 * lo * x.size ** (-1 / 5))
 
 
+@overload
+def density(
+    x: npt.NDArray[np.floating],
+    bw: float | Literal["nrd0"] = ...,
+    adjust: float = ...,
+    kernel: Literal["gaussian", "epanechnikov", "rectangular", "triangular", "biweight", "cosine", "optcosine"] = ...,
+    weights: npt.NDArray[np.floating] | None = ...,
+    n: int = ...,
+    from_: float | None = ...,
+    to_: float | None = ...,
+    cut: int = ...,
+    ext: int = ...,
+    remove_na: bool = ...,
+    kernel_only: Literal[False] = ...,
+) -> DensityResult: ...
+
+
+@overload
+def density(
+    x: npt.NDArray[np.floating],
+    bw: float | Literal["nrd0"] = ...,
+    adjust: float = ...,
+    kernel: Literal["gaussian", "epanechnikov", "rectangular", "triangular", "biweight", "cosine", "optcosine"] = ...,
+    weights: npt.NDArray[np.floating] | None = ...,
+    n: int = ...,
+    from_: float | None = ...,
+    to_: float | None = ...,
+    cut: int = ...,
+    ext: int = ...,
+    remove_na: bool = ...,
+    kernel_only: Literal[True] = ...,
+) -> float: ...
+
+
 def density(
     x: npt.NDArray[np.floating],
     bw: float | Literal["nrd0"] = "nrd0",
@@ -167,7 +201,7 @@ def density(
     ext: int = 4,
     remove_na: bool = False,
     kernel_only: bool = False,
-) -> DensityResult:
+) -> float | DensityResult:
     """Compute kernel density estimates (KDE) using FFT method.
 
     This is a reproduction of R's `density` function.
