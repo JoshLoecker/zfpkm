@@ -8,27 +8,42 @@ import numpy.typing as npt
 
 from zfpkm.types import ApproxResult
 
-T_TIES = Callable[[npt.NDArray[float]], float] | Literal["mean", "avg", "average", "first", "left", "last", "right", "min", "max", "median", "sum"]
+T_TIES = (
+    Callable[[npt.NDArray[np.floating]], float]
+    | Literal[
+        "mean",
+        "avg",
+        "average",
+        "first",
+        "left",
+        "last",
+        "right",
+        "min",
+        "max",
+        "median",
+        "sum",
+    ]
+)
 
 
 class _RegularizeValues(NamedTuple):
-    x: npt.NDArray[float]
-    y: npt.NDArray[float]
-    not_na: npt.NDArray[bool]
+    x: npt.NDArray[np.floating]
+    y: npt.NDArray[np.floating]
+    not_na: npt.NDArray[np.bool]
     kept_na: bool
 
 
-def _coerce_to_float_array(a) -> npt.NDArray[float]:
+def _coerce_to_float_array(a) -> npt.NDArray[np.float64]:
     """Convert input to 1D float array."""
-    arr = np.asarray(a, dtype=float)
+    arr = np.asarray(a, dtype=np.float64)
     if arr.ndim != 1:
         arr = arr.ravel()
     return arr
 
 
 def _regularize_values(
-    x: npt.NDArray[float],
-    y: npt.NDArray[float],
+    x: npt.NDArray[np.floating],
+    y: npt.NDArray[np.floating],
     ties: T_TIES,
     na_rm: bool,
 ) -> _RegularizeValues:
@@ -62,7 +77,7 @@ def _regularize_values(
         kept_na = np.isnan(y).any()
 
     if x.size == 0:
-        return _RegularizeValues(x=x, y=y, not_na=np.asarray([], dtype=bool), kept_na=kept_na)
+        return _RegularizeValues(x=x, y=y, not_na=np.asarray([], dtype=bool), kept_na=bool(kept_na))
 
     # Use a stable sort (mergesort) to match R's order()
     order = np.argsort(x, kind="mergesort")
@@ -113,9 +128,9 @@ def _regularize_values(
 
 
 def approx(
-    x: Sequence[float],
-    y: Sequence[float] | None = None,
-    xout: Sequence[float] | None = None,
+    x: Sequence[float] | npt.NDArray[np.floating],
+    y: Sequence[float] | npt.NDArray[np.floating] | None = None,
+    xout: Sequence[float] | npt.NDArray[np.floating] | None = None,
     method: str | int = "linear",
     n: int = 50,
     yleft: float | None = None,
@@ -174,7 +189,7 @@ def approx(
             raise ValueError("invalid interpolation method")
 
     # --- Rule normalization ---
-    if isinstance(rule, list | tuple | np.ndarray):
+    if isinstance(rule, (Sequence, np.ndarray)):
         rlist = list(rule)
         if not (1 <= len(rlist) <= 2):
             raise ValueError("`rule` must have length 1 or 2")
@@ -229,7 +244,7 @@ def approx(
             x_valid = x_reg[not_na_mask]
             x_first = x_valid[0]
             x_last = x_valid[-1]
-        xout_arr = np.linspace(x_first, x_last, num=int(n), dtype=float)
+        xout_arr = np.linspace(x_first, x_last, num=int(n), dtype=np.float64)
     else:
         xout_arr = _coerce_to_float_array(xout)
 
@@ -254,8 +269,8 @@ def approx(
         return ApproxResult(x=xout_arr, y=yout)
 
     xv = xout_arr[mask_valid]
-    left_mask = xv < x_reg[0]
-    right_mask = xv > x_reg[-1]
+    left_mask: npt.NDArray[np.bool] = xv < x_reg[0]
+    right_mask: npt.NDArray[np.bool] = xv > x_reg[-1]
     mid_mask = ~(left_mask | right_mask)
 
     res = np.empty_like(xv)
@@ -272,7 +287,7 @@ def approx(
         j_left = np.searchsorted(x_reg, xm, side="left")
 
         # Points that exactly match an x_reg value
-        eq_mask = j_left != j_right
+        eq_mask: npt.NDArray[np.bool] = j_left != j_right
         # Points that fall between x_reg values
         in_interval_mask = ~eq_mask
 

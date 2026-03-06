@@ -10,13 +10,13 @@ from zfpkm.approx import approx
 from zfpkm.types import ApproxResult, DensityResult
 
 
-def bin_distribution(x: npt.NDArray[float], weights: npt.NDArray[float], lo: float, up: float, n: int) -> npt.NDArray[float]:
+def bin_distribution(x: npt.NDArray[np.floating], weights: npt.NDArray[np.floating], lo: float, up: float, n: int) -> npt.NDArray[np.floating]:
     """Bin weighted distances."""
     ixmin: int = 0
     ixmax: int = n - 2
     delta: float = (up - lo) / (n - 1)
 
-    y: npt.NDArray[float] = np.zeros((2 * n,), dtype=float)
+    y: npt.NDArray[np.floating] = np.zeros((2 * n,), dtype=float)
     for i in range(x.size):
         i: int
         xpos: float = (x[i] - lo) / delta
@@ -112,7 +112,7 @@ def dnorm(x: float, mean: float = 0.0, sd: float = 1.0, log: bool = False, fast_
     return (m_1_sqrt_2pi / sd) * (np.exp(-0.5 * a1 * a1) * np.exp((-a1 * a2) - (0.5 * a2 * a2)))
 
 
-def nrd0(x: npt.NDArray[float]) -> float:
+def nrd0(x: npt.NDArray[np.floating]) -> float:
     """Calculate nrd0 from R source.
 
     This bandwidth calculation matches R's
@@ -155,11 +155,11 @@ def nrd0(x: npt.NDArray[float]) -> float:
 
 
 def density(
-    x: npt.NDArray[float],
+    x: npt.NDArray[np.floating],
     bw: float | Literal["nrd0"] = "nrd0",
     adjust: float = 1.0,
     kernel: Literal["gaussian", "epanechnikov", "rectangular", "triangular", "biweight", "cosine", "optcosine"] = "gaussian",
-    weights: npt.NDArray[float] | None = None,
+    weights: npt.NDArray[np.floating] | None = None,
     n: int = 512,
     from_: float | None = None,
     to_: float | None = None,
@@ -208,19 +208,19 @@ def density(
     if kernel != "gaussian":
         raise NotImplementedError(f"Only 'gaussian' kernel is implemented; got '{kernel}'")
 
-    x: npt.NDArray[float] = np.asarray(x, dtype=float)
+    x: npt.NDArray[np.floating] = np.asarray(x, dtype=float)
     if x.size < 2 and bw == "nrd0":
         raise ValueError("Need at at least two points to select a bandwidth automatically using 'nrd0'")
 
     has_weights = weights is not None
-    weights: npt.NDArray[float] | None = np.asarray(weights, float) if weights is not None else None
+    weights = np.asarray(weights, np.float64) if weights is not None else None
     if has_weights and (weights is not None and weights.size != x.size):
         raise ValueError(f"The length of provided weights does not match the length of x: {weights.size} != {n}")
 
     x_na: npt.NDArray[np.bool_] = np.isnan(x)
     if np.any(x_na):
         if remove_na:
-            x: npt.NDArray[float] = x[~x_na]
+            x: npt.NDArray[np.floating] = x[~x_na]
             if has_weights and weights is not None:
                 true_d = weights.sum().astype(float) == 1
                 weights = weights[~x_na]
@@ -235,7 +235,7 @@ def density(
         x = x[x_finite]
         nx = x.size
     if not has_weights:
-        weights: npt.NDArray[float] = np.full(shape=nx, fill_value=1 / nx, dtype=float)
+        weights = np.full(shape=nx, fill_value=1 / nx, dtype=np.float64)
         total_mass = nx / orig_nx
     else:
         weights = np.asarray(weights)
@@ -279,22 +279,21 @@ def density(
     lo = float(from_ - ext * bw_calc)
     up = float(to_ + ext * bw_calc)
 
-    y: npt.NDArray[float] = bin_distribution(x, weights, lo, up, n) * total_mass
-    kords: npt.NDArray[float] = np.linspace(start=0, stop=((2 * n - 1) / (n - 1) * (up - lo)), num=2 * n, dtype=float)
+    y: npt.NDArray[np.floating] = bin_distribution(x, weights, lo, up, n) * total_mass
+    kords: npt.NDArray[np.float64] = np.linspace(start=0, stop=((2 * n - 1) / (n - 1) * (up - lo)), num=2 * n, dtype=np.float64)
     kords[n + 1 : 2 * n] = -kords[n:1:-1]  # mirror/negate tail: R's kords[n:2] will index from the reverse if `n`>2
-
-    # Initial diverge here (inside dnorm calculation)
-    kords: npt.NDArray[float] = np.asarray([dnorm(i, sd=bw_calc) for i in kords], dtype=float)
+    kords = np.asarray([dnorm(i, sd=bw_calc) for i in kords])
 
     fft_y: npt.NDArray[np.complex128] = np.fft.fft(y)
     conj_fft_kords: npt.NDArray[np.complex128] = np.conjugate(np.fft.fft(kords))
+
     # Must multiply by `kords.size` because R does not produce a normalize inverse FFT, but NumPy normalizes by `1/size`
-    kords: npt.NDArray[np.complex128] = np.fft.ifft(fft_y * conj_fft_kords) * kords.size
-    kords: npt.NDArray[float] = (np.maximum(0, kords.real)[0:n]) / y.size  # for values of kords, get 0 or kords[i], whichever is larger
-    xords: npt.NDArray[float] = np.linspace(lo, up, num=n, dtype=float)
+    complex_kords = np.fft.ifft(fft_y * conj_fft_kords) * kords.size
+    kords = (np.maximum(0, complex_kords.real)[0:n]) / y.size  # for values of kords, get 0 or kords[i], whichever is larger
+    xords: npt.NDArray[np.float64] = np.linspace(lo, up, num=n, dtype=np.float64)
 
     # xp=known x-coords, fp=known y-cords, x=unknown x-coords; returns interpolated (e.g., unknown) y-coords
-    interp_x: npt.NDArray[float] = np.linspace(from_, to_, num=n_user)
+    interp_x: npt.NDArray[np.floating] = np.linspace(from_, to_, num=n_user)
     interp_y: ApproxResult = approx(xords, kords, interp_x)
 
     return DensityResult(x=interp_x, y=interp_y.y, bw=bw_calc, n=n)
