@@ -69,7 +69,7 @@ def zfpkm_plot(
         sd: float = result.sd
 
         # only used for Gaussian distribution estimation, not actual zFPKM calculation
-        fitted: npt.NDArray[np.float64] = np.asarray([dnorm(x, mean=mu, sd=sd) for x in d.x], dtype=float64)
+        fitted: npt.NDArray[np.float64] = np.asarray([dnorm(x, mean=mu, sd=sd) for x in d.x], dtype=np.float64)
         max_fpkm = d.y.max()
         max_fitted: np.float64 = fitted.max()
         scale_fitted: npt.NDArray[np.float64] = fitted * (max_fpkm / max_fitted)
