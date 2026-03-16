@@ -1,6 +1,6 @@
 import re
 from collections.abc import Sequence
-from typing import Literal, cast, overload
+from typing import Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -78,7 +78,7 @@ def _enforce_minimum_peak_distance(df: pd.DataFrame, min_peak_distance: int, inp
         df.drop(df.index[~good_peaks], inplace=True)
         df.reset_index(drop=True, inplace=True)
         return None
-    return cast(pd.DataFrame, df.iloc[good_peaks, :].reset_index(drop=True))
+    return df.iloc[good_peaks, :].reset_index(drop=True)
 
 
 def find_peaks(
@@ -95,7 +95,7 @@ def find_peaks(
 ) -> pd.DataFrame:
     """Identify peaks in a given time series.
 
-    This function is modelled after R's `pracma::findpeaks` function.
+    This function is modeled after R's `pracma::findpeaks` function.
     SciPy's `scipy.signal.find_peaks` provides different results than `pracma::findpeaks`,
         resulting in the requirement for this translation.
 
@@ -121,14 +121,17 @@ def find_peaks(
         end_idx: the ending index (from `x`) of the identified peak
         If the dataframe is empty, no peaks could be identified
     """
-    x = np.asarray(x, dtype=float) if not isinstance(x, np.ndarray) else x
+    if ndowns is None:
+        ndowns = nups
+
+    _x: npt.NDArray[np.float64] = np.asarray(x, dtype=np.float64)
     npeaks: int = max(npeaks, 0)
-    ndowns: int = ndowns or nups
-    peak_pattern: str = peak_pattern or rf"[+]{{{nups},}}[-]{{{ndowns},}}"
+    _ndowns: int = ndowns or nups
+    _peak_pattern: str = peak_pattern or rf"[+]{{{nups},}}[-]{{{ndowns},}}"
     _validate_args(
-        x=x,
+        x=_x,
         nups=nups,
-        ndowns=ndowns,
+        ndowns=_ndowns,
         zero=zero,
         min_peak_height=min_peak_height,
         min_peak_distance=min_peak_distance,
@@ -136,28 +139,28 @@ def find_peaks(
     )
 
     # find peaks by regex matching the sign pattern
-    derivative_chars = _encode_signs(x=x, zero=zero)
-    matches: list[re.Match[str]] = list(re.finditer(peak_pattern, derivative_chars))
+    derivative_chars = _encode_signs(x=_x, zero=zero)
+    matches: list[re.Match[str]] = list(re.finditer(_peak_pattern, derivative_chars))
     if not matches:
         return pd.DataFrame(columns=["height", "peak_idx", "start_idx", "end_idx"])
 
-    pattern_start_index: npt.NDArray[int] = np.asarray([m.start() for m in matches], dtype=int)
-    pattern_end_index: npt.NDArray[int] = np.asarray([m.end() for m in matches], dtype=int)
+    pattern_start_index: npt.NDArray[np.int64] = np.asarray([m.start() for m in matches], dtype=np.int64)
+    pattern_end_index: npt.NDArray[np.int64] = np.asarray([m.end() for m in matches], dtype=np.int64)
 
     num_matches: int = len(pattern_start_index)
-    peak_index: npt.NDArray[int] = np.zeros(num_matches, dtype=int)
-    peak_height: npt.NDArray[float] = np.zeros(num_matches, dtype=float)
+    peak_index: npt.NDArray[np.int64] = np.zeros(num_matches, dtype=np.int64)
+    peak_height: npt.NDArray[np.float64] = np.zeros(num_matches, dtype=np.float64)
 
     # for each match region, find the local max
     for i in range(num_matches):
-        segment: npt.NDArray[int] = x[pattern_start_index[i] : pattern_end_index[i] + 1]
+        segment: npt.NDArray[np.float64] = _x[pattern_start_index[i] : pattern_end_index[i] + 1]
         segment_max_idx: int = np.argmax(segment).astype(int)
         peak_index[i] = pattern_start_index[i] + segment_max_idx
         peak_height[i] = segment[segment_max_idx]
 
     # filter for values that are too low or below the threshold difference
-    x_left: float = x[pattern_start_index]
-    x_right: float = x[np.minimum(pattern_end_index, x.size - 1)]
+    x_left: npt.NDArray[np.float64] = _x[pattern_start_index]
+    x_right: npt.NDArray[np.float64] = _x[np.minimum(pattern_end_index, _x.size - 1)]
     valid_peaks: list[int] = list(np.where((peak_height >= min_peak_height) & ((peak_height - np.maximum(x_left, x_right)) >= threshold))[0].astype(int))  # noqa: E501  # fmt: skip
 
     if len(valid_peaks) == 0:
@@ -182,6 +185,6 @@ def find_peaks(
 
     # if provided, limit the number of peaks returned
     if 0 < npeaks < out_df.shape[0]:
-        out_df = cast(pd.DataFrame, out_df.iloc[:npeaks, :].reset_index(drop=True))
+        out_df = out_df.iloc[:npeaks, :].reset_index(drop=True)
 
     return out_df

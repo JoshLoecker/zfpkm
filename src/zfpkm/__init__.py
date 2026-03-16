@@ -75,6 +75,8 @@ def zFPKM(
         - Row names as genomic identifier (Entrez Gene ID, Ensembl Gene ID, Gene Symbol, etc.)
         - Column names as sample identifiers
 
+    If `log=True`, the FPKM values should be raw values.
+
     :param fpkm: raw FPKM values.
     :param results_as_dict: if true, the `ZFPKMResult` object will be returned as a dictionary where:
         - the keys are the column names (if a `pd.DataFrame` provided as input), otherwise integer values (if a `np.ndarray` provided as input)
@@ -93,13 +95,6 @@ def zFPKM(
 
     if fpkm.ndim > 2:
         raise ValueError("Input ndarray must be 1D or 2D.")
-
-    # if fpkm.ndim == 1:
-    #     zfpkm_arr, zfpkm_results = _zfpkm_1d(log2_fpkm)
-    # elif fpkm.ndim == 2:
-    #     zfpkm_arr, zfpkm_results = _zfpkm_2d(log2_fpkm)
-    # else:
-    #     raise ValueError(f"Input ndarray must be 1D or 2D, got: {fpkm.ndim}D.")
 
     zfpkm_df: pd.DataFrame = pd.DataFrame(data=0.0, index=fpkm.index, columns=fpkm.columns)
     zfpkm_results: list[ZFPKMResult] = []

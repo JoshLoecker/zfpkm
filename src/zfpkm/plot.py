@@ -59,20 +59,20 @@ def zfpkm_plot(
 
     :returns: (optionally) the generated figure
     """
-    zfpkm_result: list[ZFPKMResult] = [zfpkm_result] if isinstance(zfpkm_result, ZFPKMResult) else zfpkm_result
-
+    results: list[ZFPKMResult] = [zfpkm_result] if isinstance(zfpkm_result, ZFPKMResult) else zfpkm_result
     plot_dfs: list[pd.DataFrame] = []
-    for result in zfpkm_result:
+
+    for result in results:
         name: str = result.name
         d: DensityResult = result.density
         mu: float = result.mu
         sd: float = result.sd
 
         # only used for Gaussian distribution estimation, not actual zFPKM calculation
-        fitted: npt.NDArray[float] = np.asarray([dnorm(x, mean=mu, sd=sd) for x in d.x], dtype=float)
+        fitted: npt.NDArray[np.float64] = np.asarray([dnorm(x, mean=mu, sd=sd) for x in d.x], dtype=float64)
         max_fpkm = d.y.max()
-        max_fitted: float = fitted.max()
-        scale_fitted: npt.NDArray[float] = fitted * (max_fpkm / max_fitted)
+        max_fitted: np.float64 = fitted.max()
+        scale_fitted: npt.NDArray[np.float64] = fitted * (max_fpkm / max_fitted)
         plot_dfs.append(pd.DataFrame({"sample_name": name, "log2fpkm": d.x, "fpkm_density": d.y, "fitted_density_scaled": scale_fitted}))
 
     mega_df = pd.concat(plot_dfs, ignore_index=True)
@@ -81,7 +81,7 @@ def zfpkm_plot(
     # two `max` calls are required: the first gets the max value in each series and the second max gets the max value in the dataframe
     max_y = mega_df[["fpkm_density", "fitted_density_scaled"]].max().max() * 1.05
 
-    nplots = len(zfpkm_result)
+    nplots = len(results)
     nrows = int(np.ceil(nplots / ncols))
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -92,7 +92,7 @@ def zfpkm_plot(
         squeeze=False,  # allow 1x1 grid remain an array
     )
 
-    axes: npt.NDArray[plt.Axes] = axes.flatten()
+    axes = axes.flatten()
     for ax, (sample_name, group) in zip(axes, mega_df.groupby("sample_name")):  # noqa: B905  we are intentionally skipping the last few axes that have been generated
         ax.plot(group["log2fpkm"], group["fpkm_density"], color="teal", alpha=0.7, label="fpkm_density")
         ax.plot(group["log2fpkm"], group["fitted_density_scaled"], color="salmon", alpha=0.7, label="fitted_density_scaled")

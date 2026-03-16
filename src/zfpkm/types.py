@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import numpy.typing as npt
 
 __all__ = ["ApproxResult", "DensityResult", "ZFPKMResult"]
@@ -9,8 +10,8 @@ __all__ = ["ApproxResult", "DensityResult", "ZFPKMResult"]
 
 @dataclass(slots=True, frozen=True)
 class ApproxResult:
-    x: npt.NDArray[float]
-    y: npt.NDArray[float]
+    x: npt.NDArray[np.floating]
+    y: npt.NDArray[np.floating]
 
 
 @dataclass(slots=True, frozen=True)
@@ -23,8 +24,8 @@ class DensityResult:
     :param n: The number of points in the output grid.
     """
 
-    x: npt.NDArray[float]
-    y: npt.NDArray[float]
+    x: npt.NDArray[np.floating]
+    y: npt.NDArray[np.floating]
     bw: float
     n: int
 
