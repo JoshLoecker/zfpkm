@@ -17,6 +17,7 @@ def zfpkm_plot(
     facet_titles: bool = False,
     plot_xfloor: float = -15,
     ncols: int = 5,
+    *,
     return_fig: Literal[False] = False,
     save_filepath: str | Path | None = None,
 ) -> None: ...
@@ -28,6 +29,7 @@ def zfpkm_plot(
     facet_titles: bool = False,
     plot_xfloor: float = -15,
     ncols: int = 5,
+    *,
     return_fig: Literal[True] = True,
     save_filepath: str | Path | None = None,
 ) -> plt.Figure: ...
@@ -73,7 +75,8 @@ def zfpkm_plot(
         max_fpkm = d.y.max()
         max_fitted: np.float64 = fitted.max()
         scale_fitted: npt.NDArray[np.float64] = fitted * (max_fpkm / max_fitted)
-        plot_dfs.append(pd.DataFrame({"sample_name": name, "log2fpkm": d.x, "fpkm_density": d.y, "fitted_density_scaled": scale_fitted}))
+        plot_dfs.append(pd.DataFrame(
+            {"sample_name": name, "log2fpkm": d.x, "fpkm_density": d.y, "fitted_density_scaled": scale_fitted}))
 
     mega_df = pd.concat(plot_dfs, ignore_index=True)
     max_x = mega_df["log2fpkm"].max()
@@ -93,9 +96,11 @@ def zfpkm_plot(
     )
 
     axes = axes.flatten()
-    for ax, (sample_name, group) in zip(axes, mega_df.groupby("sample_name")):  # noqa: B905  we are intentionally skipping the last few axes that have been generated
+    for ax, (sample_name, group) in zip(axes, mega_df.groupby(
+        "sample_name")):  # noqa: B905  we are intentionally skipping the last few axes that have been generated
         ax.plot(group["log2fpkm"], group["fpkm_density"], color="teal", alpha=0.7, label="fpkm_density")
-        ax.plot(group["log2fpkm"], group["fitted_density_scaled"], color="salmon", alpha=0.7, label="fitted_density_scaled")
+        ax.plot(group["log2fpkm"], group["fitted_density_scaled"], color="salmon", alpha=0.7,
+                label="fitted_density_scaled")
         ax.set_xlim(plot_xfloor, max_x)
         ax.set_ylim(0, max_y)
         if facet_titles:
@@ -110,8 +115,8 @@ def zfpkm_plot(
     fig.text(0.5, 0.01, "log2(FPKM)", ha="center", fontsize=11)
     fig.text(0.01, 0.5, "[scaled] density", va="center", rotation="vertical", fontsize=11)
     fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False)
-    plt.tight_layout()
-    plt.subplots_adjust(
+    fig.tight_layout()
+    fig.subplots_adjust(
         top=0.95,
         bottom=0.05,
         left=0.05,
@@ -123,9 +128,11 @@ def zfpkm_plot(
     if save_filepath:
         save_filepath = Path(save_filepath)
         save_filepath.parent.mkdir(exist_ok=True, parents=True)
-        plt.savefig(save_filepath.as_posix())
+        fig.savefig(save_filepath.as_posix())
     if return_fig:
-        return plt.gcf()
+        return fig
     if not save_filepath and not return_fig:
         logger.warning("Neither `save_filepath` nor `return_fig` were set; the generated figure will be discarded.")
+
+    plt.close(fig)
     return None
