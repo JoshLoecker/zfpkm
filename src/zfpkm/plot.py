@@ -30,7 +30,7 @@ def zfpkm_plot(
     plot_xfloor: float = -15,
     ncols: int = 5,
     *,
-    return_fig: Literal[True] = True,
+    return_fig: Literal[True],
     save_filepath: str | Path | None = None,
 ) -> plt.Figure: ...
 
@@ -40,6 +40,7 @@ def zfpkm_plot(
     facet_titles: bool = False,
     plot_xfloor: float = -15,
     ncols: int = 5,
+    *,
     return_fig: bool = False,
     save_filepath: str | Path | None = None,
 ) -> plt.Figure | None:
