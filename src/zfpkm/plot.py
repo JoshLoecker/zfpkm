@@ -117,18 +117,9 @@ def zfpkm_plot(
         axes[i - ncols].xaxis.set_tick_params(labelbottom=True)
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.text(0.5, 0.01, "log2(FPKM)", ha="center", fontsize=11)
-    fig.text(0.01, 0.5, "[scaled] density", va="center", rotation="vertical", fontsize=11)
-    fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False)
-    fig.tight_layout()
-    fig.subplots_adjust(
-        top=0.95,
-        bottom=0.05,
-        left=0.05,
-        right=0.98,
-        wspace=0.10,
-        hspace=0.10,
-    )
+    fig.supxlabel("log2(FPKM)", fontsize=11)
+    fig.supylabel("[scaled] density", fontsize=11)
+    fig.legend(handles, labels, loc="outside upper center", ncol=2, frameon=False)
 
     if save_filepath:
         save_filepath = Path(save_filepath)
