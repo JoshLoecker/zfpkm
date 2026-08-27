@@ -86,6 +86,7 @@ def zfpkm_plot(
     max_y = mega_df[["fpkm_density", "fitted_density_scaled"]].max().max() * 1.05
 
     nplots = len(results)
+    ncols = min(ncols, nplots)  # do not reserve empty columns when there are fewer samples than `ncols`
     nrows = int(np.ceil(nplots / ncols))
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -93,7 +94,8 @@ def zfpkm_plot(
         figsize=(ncols * 3.5, nrows * 3),
         sharex=True,
         sharey=True,
-        squeeze=False,  # allow 1x1 grid remain an array
+        squeeze=False,  # allow 1x1 grid to remain an array
+        layout="constrained",  # keeps tick labels, axis labels, and the legend from being clipped
     )
 
     axes = axes.flatten()
