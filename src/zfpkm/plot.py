@@ -109,6 +109,7 @@ def zfpkm_plot(
         if facet_titles:
             ax.set_title(sample_name, fontsize=9)
         ax.grid(alpha=0.5, linewidth=0.4)
+        ax.axvline(-3, color="red", linestyle="--", linewidth=0.8, alpha=0.35)
 
     # hide unused subplots
     for ax in axes[nplots:]:
