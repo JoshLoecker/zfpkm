@@ -111,9 +111,10 @@ def zfpkm_plot(
         ax.grid(alpha=0.5, linewidth=0.4)
         ax.axvline(-3, color="red", linestyle="--", linewidth=0.8, alpha=0.35)
 
-    # hide unused subplots
-    for ax in axes[nplots:]:
+    # hide unused subplots but keep x-axis tick labels
+    for i, ax in enumerate(axes[nplots:], start=nplots):
         ax.axis("off")
+        axes[i - ncols].xaxis.set_tick_params(labelbottom=True)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.text(0.5, 0.01, "log2(FPKM)", ha="center", fontsize=11)
